@@ -81,7 +81,7 @@ const UserProfile: React.FC<UserProfileProps> = ({ data }) => {
       alignItems="center"
       minHeight="40vh"
       sx={{
-        background: "linear-gradient(to right, #0f2027, #203a43, #2c5364)",
+        background: "linear-gradient(135deg, #5f6e8e, #2c3e50)",
         p: 4,
       }}
     >
