@@ -1,22 +1,34 @@
-import React, { useCallback, useMemo, useState } from "react";
+import React, { useState } from "react";
+import { motion } from "framer-motion";
 import {
   Box,
   Typography,
-  TextField,
-  Button,
   Avatar,
   Grid,
+  Card,
+  CardContent,
+  TextField,
+  Button,
 } from "@mui/material";
-import * as yup from "yup";
 import { useForm } from "react-hook-form";
 import { yupResolver } from "@hookform/resolvers/yup";
+import * as yup from "yup";
 import PasswordInput from "../PasswordInput/PasswordInput";
-import {
-  useLazyMeQuery,
-  useUpdateUserMutation,
-  useUploadImageMutation,
-} from "../../services/api";
+import { useLazyMeQuery, useUpdateUserMutation } from "../../services/api";
 import { toast } from "react-toastify";
+
+// Validation Schema
+const validation = yup.object({
+  email: yup.string().email("Invalid email").required("Email is required"),
+  name: yup.string().required("Name is required"),
+  password: yup
+    .string()
+    .required("Password is required")
+    .min(5, "Minimum 5 characters required")
+    .max(16, "Maximum 16 characters allowed"),
+});
+
+type FormData = typeof validation.__outputType;
 
 interface UserProfileProps {
   data: {
@@ -29,26 +41,10 @@ interface UserProfileProps {
   };
 }
 
-const validation = yup.object({
-  email: yup.string().email("Email is invalid").required("Email is required"),
-  name: yup.string().required("Name is required"),
-  password: yup
-    .string()
-    .required("Password is required")
-    .min(5, "Minimumn 5 chars are required")
-    .max(16, "Miximumn 16 chars allowed"),
-});
-
-type FormData = typeof validation.__outputType;
-
 const UserProfile: React.FC<UserProfileProps> = ({ data }) => {
-  const [profileImage, setProfileImage] = useState<File | null>(null);
-  const [previewImage, setPreviewImage] = useState<string | null>(
-    data.imageUrl
-  );
-  const [uploadImage, { isLoading: uploadLoading }] = useUploadImageMutation();
   const [fetchUser] = useLazyMeQuery();
   const [updateUser, { isLoading }] = useUpdateUserMutation();
+  const [avatarClicked, setAvatarClicked] = useState(false);
 
   const {
     register,
@@ -63,170 +59,172 @@ const UserProfile: React.FC<UserProfileProps> = ({ data }) => {
     resolver: yupResolver(validation),
   });
 
-  // Handle image selection
-  const handleImageChange = useCallback(
-    (e: React.ChangeEvent<HTMLInputElement>) => {
-      const file = e.target.files?.[0];
-      if (file) {
-        setProfileImage(file);
-        setPreviewImage(URL.createObjectURL(file)); // Show preview
-      }
-    },
-    []
-  );
-
-  // Handle image upload
-  const handleImageUpload = useCallback(async () => {
-    if (!profileImage) return alert("Please select an image first.");
-    const id = toast.loading("Uploading...");
+  // Handle profile update
+  const handleUpdateProfile = async (updationData: FormData) => {
+    const id = toast.loading("Updating profile...");
+    const payload = { _id: data._id, ...updationData };
     try {
-      const formData = new FormData();
-      formData.append("file", profileImage);
-      await uploadImage(formData).unwrap();
+      await updateUser(payload).unwrap();
       await fetchUser().unwrap();
       toast.dismiss(id);
-      toast.success("Upload successful!");
+      toast.success("Profile updated successfully!");
     } catch (error: any) {
       toast.dismiss(id);
-      toast.error(error.data || error.message || "something went wrong");
+      toast.error(error?.data?.message || "Something went wrong!");
     }
-  }, [profileImage, uploadImage, fetchUser]);
-
-  // Handle profile update
-  const handleUpdateProfile = useCallback(
-    async (updationData: FormData) => {
-      const id = toast.loading("loading...");
-      const payload = { _id: data._id, ...updationData };
-      try {
-        await updateUser(payload).unwrap();
-        await fetchUser().unwrap();
-        toast.dismiss(id);
-        toast.success("User updated successfully!");
-      } catch (error: any) {
-        const validationError = error?.data?.data?.errors?.[0].msg;
-        toast.dismiss(id);
-        toast.error(
-          validationError ?? error?.data?.message ?? "Something went wrong!"
-        );
-      }
-    },
-    [data._id, updateUser, fetchUser]
-  );
-
-  const avatarUrl = useMemo(() => {
-    return (
-      previewImage ||
-      `https://api.dicebear.com/5.x/initials/svg?seed=${data?.name}}`
-    );
-  }, [previewImage, data?.name]);
+  };
 
   return (
     <Box
       display="flex"
       justifyContent="center"
       alignItems="center"
-      width="100%"
-      height="100%"
+      minHeight="40vh"
       sx={{
+        background: "linear-gradient(to right, #0f2027, #203a43, #2c5364)",
         p: 4,
-        maxWidth: 800,
-        mx: "auto",
-        boxShadow: 3,
-        borderRadius: 2,
-        mt: "20px",
       }}
     >
-      <Grid container spacing={4}>
-        {/* Left Side - Profile Image & Details */}
-        <Grid item xs={12} md={4} sx={{ textAlign: "center" }}>
-          <Avatar
-            src={avatarUrl}
-            alt="Profile"
-            sx={{ width: 120, height: 120, mx: "auto", mb: 2 }}
-          />
-          <Typography variant="h6">{data.name}</Typography>
-          <Typography variant="body2" color="text.secondary">
-            {data.email}
-          </Typography>
-          <Typography variant="body2" color="text.secondary">
-            Role: {data.role}
-          </Typography>
-        </Grid>
-
-        {/* Right Side - Form for Updating Profile */}
-        <Grid item xs={12} md={8}>
-          <input
-            accept="image/*"
-            type="file"
-            id="upload-image"
-            style={{ display: "none" }}
-            onChange={handleImageChange}
-          />
-          <label htmlFor="upload-image">
-            <Button variant="outlined" component="span">
-              Choose Image
-            </Button>
-          </label>
-          <Button
-            loading={uploadLoading}
-            variant="contained"
-            color="primary"
-            onClick={handleImageUpload}
-            sx={{ ml: 2 }}
-          >
-            Upload
-          </Button>
-
-          <Box mt={3}>
-            <Box
-              gap="8px"
-              display="flex"
-              flexDirection={"column"}
-              component="form"
-              onSubmit={handleSubmit(handleUpdateProfile)}
-            >
-              <TextField
-                fullWidth
-                type="text"
-                placeholder="Name"
-                label="Name"
-                {...register("name")}
-                error={Boolean(errors.name?.message)}
-                helperText={errors.name?.message}
-              />
-              <TextField
-                fullWidth
-                type="text"
-                placeholder="Email"
-                label="Email"
-                {...register("email")}
-                error={Boolean(errors.email?.message)}
-                helperText={errors.email?.message}
-              />
-              <PasswordInput
-                fullWidth
-                type="password"
-                placeholder="Confirm Password"
-                label="Confirm password"
-                error={Boolean(errors.password?.message)}
-                helperText={errors.password?.message}
-                {...register("password")}
-              />
-              <Button
-                type="submit"
-                variant="contained"
-                color="primary"
-                fullWidth
-                disabled={!isDirty || !isValid}
-                loading={isLoading}
-                sx={{ mt: 2 }}
+      <Card
+        sx={{
+          maxWidth: 600,
+          width: "100%",
+          borderRadius: 4,
+          boxShadow: "0 10px 30px rgba(0, 0, 0, 0.3)",
+          background: "rgba(255, 255, 255, 0.15)",
+          backdropFilter: "blur(15px)",
+          padding: 3,
+        }}
+      >
+        <CardContent>
+          <Grid container spacing={3} justifyContent="center">
+            {/* Profile Image */}
+            <Grid item xs={12} sx={{ textAlign: "center" }}>
+              <motion.div
+                whileTap={{ scale: 1.2 }}
+                animate={{ y: avatarClicked ? [0, -10, 0] : 0 }}
+                transition={{ type: "spring", stiffness: 200, damping: 10 }}
+                onClick={() => setAvatarClicked((prev) => !prev)}
+                style={{ display: "inline-block" }}
               >
-                Update Profile
-              </Button>
-            </Box>
-          </Box>
-        </Grid>
-      </Grid>
+                <Avatar
+                  src={
+                    data.imageUrl ||
+                    `https://api.dicebear.com/5.x/initials/svg?seed=${data?.name}`
+                  }
+                  alt="Profile"
+                  sx={{
+                    width: 60,
+                    height: 60,
+                    border: "5px solid rgba(255, 255, 255, 0.6)",
+                    boxShadow: "0 5px 15px rgba(0, 0, 0, 0.4)",
+                    cursor: "pointer",
+                  }}
+                />
+              </motion.div>
+
+              <Typography
+                variant="h5"
+                fontWeight={600}
+                mt={2}
+                sx={{
+                  background: "linear-gradient(90deg, #00c6ff, #0072ff)",
+                  WebkitBackgroundClip: "text",
+                  WebkitTextFillColor: "transparent",
+                }}
+              >
+                {data.name}
+              </Typography>
+              <Typography variant="body2" color="rgba(255,255,255,0.8)">
+                {data.email}
+              </Typography>
+              <Typography variant="body2" color="rgba(255,255,255,0.6)">
+                Role: {data.role}
+              </Typography>
+            </Grid>
+
+            {/* Profile Update Form */}
+            <Grid item xs={12}>
+              <Box
+                component="form"
+                onSubmit={handleSubmit(handleUpdateProfile)}
+                display="flex"
+                flexDirection="column"
+                gap={2}
+              >
+                <TextField
+                  fullWidth
+                  label="Name"
+                  variant="outlined"
+                  {...register("name")}
+                  error={!!errors.name}
+                  helperText={errors.name?.message}
+                  sx={{
+                    "& .MuiOutlinedInput-root": {
+                      "& fieldset": { borderColor: "rgba(255, 255, 255, 0.4)" },
+                      "&:hover fieldset": { borderColor: "#64B5F6" },
+                    },
+                    "& .MuiInputBase-input": { color: "white" },
+                    "& .MuiFormLabel-root": { color: "rgba(255, 255, 255, 0.8)" },
+                  }}
+                />
+                <TextField
+                  fullWidth
+                  label="Email"
+                  variant="outlined"
+                  {...register("email")}
+                  error={!!errors.email}
+                  helperText={errors.email?.message}
+                  sx={{
+                    "& .MuiOutlinedInput-root": {
+                      "& fieldset": { borderColor: "rgba(255, 255, 255, 0.4)" },
+                      "&:hover fieldset": { borderColor: "#64B5F6" },
+                    },
+                    "& .MuiInputBase-input": { color: "white" },
+                    "& .MuiFormLabel-root": { color: "rgba(255, 255, 255, 0.8)" },
+                  }}
+                />
+                <PasswordInput
+                  fullWidth
+                  label="Confirm Password"
+                  {...register("password")}
+                  error={!!errors.password}
+                  helperText={errors.password?.message}
+                  sx={{
+                    "& .MuiOutlinedInput-root": {
+                      "& fieldset": { borderColor: "rgba(255, 255, 255, 0.4)" },
+                      "&:hover fieldset": { borderColor: "#64B5F6" },
+                    },
+                    "& .MuiInputBase-input": { color: "white" },
+                    "& .MuiFormLabel-root": { color: "rgba(255, 255, 255, 0.8)" },
+                  }}
+                />
+                <Button
+                  type="submit"
+                  variant="contained"
+                  fullWidth
+                  disabled={!isDirty || !isValid}
+                  sx={{
+                    fontSize: "16px",
+                    fontWeight: 600,
+                    background: "linear-gradient(to right, #A6FFCB)",
+                    color: "black",
+                    boxShadow: "0 4px 10px rgba(0, 0, 0, 0.2)",
+                    textTransform: "none",
+                    transition: "0.3s",
+                    "&:hover": {
+                      background: "linear-gradient(to right, rgb(1, 37, 17))",
+                      transform: "scale(1.05)",
+                    },
+                  }}
+                >
+                  Update Profile
+                </Button>
+              </Box>
+            </Grid>
+          </Grid>
+        </CardContent>
+      </Card>
     </Box>
   );
 };
